@@ -1,0 +1,3 @@
+(library
+ (name zin)
+ (libraries base))
