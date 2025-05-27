@@ -1,3 +1,4 @@
 (library
  (name zin)
+ (modules tokens lexer)
  (libraries base))
