@@ -25,7 +25,7 @@ type token =
   | FALSE
   | IF
   | ELSE
-  | Return
+  | RETURN
   | ILLEGAL
   | EOF
 
@@ -37,7 +37,7 @@ let keywordsLookup word =
   | "false" -> FALSE
   | "if" -> IF
   | "else" -> ELSE
-  | "return" -> Return
+  | "return" -> RETURN
   | _ -> IDENTIFIER word
 
 let describeToken = function
@@ -69,4 +69,4 @@ let describeToken = function
   | FALSE -> "False"
   | IF -> "If"
   | ELSE -> "Else"
-  | Return -> "Return"
+  | RETURN -> "Return"
