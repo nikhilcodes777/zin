@@ -30,6 +30,13 @@ let skipWhiteSpace l =
     readChar l
   done
 
+let skipComment l =
+  while
+    (not (Base.Char.equal l.ch '\n')) && not (Base.Char.equal l.ch '\000')
+  do
+    readChar l
+  done
+
 let readIdentifier l =
   let position = l.position in
   while isLetter l.ch do
@@ -47,7 +54,7 @@ let readInteger l =
     (Base.Int.of_string
     @@ Base.String.sub l.input ~pos:position ~len:(l.position - position))
 
-let nextToken (l : lexer) : Tokens.token =
+let rec nextToken (l : lexer) : Tokens.token =
   skipWhiteSpace l;
   match l.ch with
   | '=' ->
@@ -62,8 +69,14 @@ let nextToken (l : lexer) : Tokens.token =
       readChar l;
       Tokens.PLUS
   | '-' ->
-      readChar l;
-      Tokens.MINUS
+      if Base.Char.equal (peekLexer l) '-' then (
+        readChar l;
+        readChar l;
+        skipComment l;
+        nextToken l)
+      else (
+        readChar l;
+        Tokens.MINUS)
   | ';' ->
       readChar l;
       Tokens.SEMICOLON
