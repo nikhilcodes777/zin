@@ -63,6 +63,11 @@ let parseIntegerLiteral p =
   | INT value -> Ok (IntLiteral value, advance p)
   | _ -> Error (UnexpectedToken { expected = "INT"; got = p.current })
 
+let parseStringLiteral p =
+  match p.current with
+  | STRING str -> Ok (StringLiteral str, advance p)
+  | _ -> Error (UnexpectedToken { expected = "STRING"; got = p.current })
+
 let parseIdentifier p =
   match p.current with
   | IDENTIFIER name -> Ok (Ident name, advance p)
@@ -78,6 +83,7 @@ let rec parseExpression p precedence =
   let* left, p =
     match p.current with
     | INT _ -> parseIntegerLiteral p
+    | STRING _ -> parseStringLiteral p
     | IDENTIFIER _ -> parseIdentifier p
     | TRUE | FALSE -> parseBooleanLiteral p
     | BANG | MINUS -> parsePrefixExpression p

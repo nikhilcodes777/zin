@@ -37,6 +37,20 @@ let skipComment l =
     readChar l
   done
 
+let readString l =
+  let position = l.position + 1 in
+  readChar l;
+  while (not (Base.Char.equal l.ch '"')) && not (Base.Char.equal l.ch '\000') do
+    readChar l
+  done;
+  if Base.Char.equal l.ch '"' then (
+    let str =
+      Base.String.sub l.input ~pos:position ~len:(l.position - position)
+    in
+    readChar l;
+    Tokens.STRING str)
+  else Tokens.ILLEGAL
+
 let readIdentifier l =
   let position = l.position in
   while isLetter l.ch do
@@ -77,6 +91,7 @@ let rec nextToken (l : lexer) : Tokens.token =
       else (
         readChar l;
         Tokens.MINUS)
+  | '"' -> readString l
   | ';' ->
       readChar l;
       Tokens.SEMICOLON

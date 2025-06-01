@@ -11,6 +11,8 @@ type environment = {
 and eval_object =
   | OBJ_INT of int
   | OBJ_BOOL of bool
+  | OBJ_STRING of string
+  | OBJ_BUILTIN of string
   | OBJ_NULL
   | OBJ_ERROR of string
   | OBJ_RETURN of eval_object
@@ -23,6 +25,8 @@ and eval_object =
 let rec describeObject = function
   | OBJ_INT i -> string_of_int i
   | OBJ_BOOL b -> string_of_bool b
+  | OBJ_STRING s -> s
+  | OBJ_BUILTIN _ -> "builtin_function"
   | OBJ_NULL -> "null"
   | OBJ_RETURN r -> describeObject r
   | OBJ_ERROR e -> "Error: " ^ e
@@ -32,10 +36,59 @@ let rec describeObject = function
 let getTypeName = function
   | OBJ_INT _ -> "integer"
   | OBJ_BOOL _ -> "boolean"
+  | OBJ_STRING _ -> "string"
   | OBJ_NULL -> "null"
+  | OBJ_BUILTIN _ -> "builtin"
   | OBJ_ERROR _ -> "error"
   | OBJ_RETURN _ -> "return value"
   | OBJ_FUNCTION _ -> "function"
+
+let isBuiltin name =
+  match name with
+  | "len" | "print" | "println" | "str" | "int" | "type" -> true
+  | _ -> false
+
+let callBuiltin name args =
+  match (name, args) with
+  | "len", [ OBJ_STRING s ] -> OBJ_INT (String.length s)
+  | "len", [ arg ] ->
+      OBJ_ERROR ("len() expects a string, got " ^ getTypeName arg)
+  | "len", args ->
+      OBJ_ERROR
+        ("len() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "print", [ arg ] ->
+      print_string (describeObject arg);
+      flush_all ();
+      OBJ_NULL
+  | "print", args ->
+      OBJ_ERROR
+        ("print() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "println", [ arg ] ->
+      print_endline (describeObject arg);
+      flush_all ();
+      OBJ_NULL
+  | "println", args ->
+      OBJ_ERROR
+        ("println() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "str", [ arg ] -> OBJ_STRING (describeObject arg)
+  | "str", args ->
+      OBJ_ERROR
+        ("str() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "int", [ OBJ_STRING s ] -> (
+      try OBJ_INT (int_of_string s)
+      with Failure _ -> OBJ_ERROR ("Cannot convert '" ^ s ^ "' to integer"))
+  | "int", [ OBJ_INT i ] -> OBJ_INT i
+  | "int", [ arg ] ->
+      OBJ_ERROR ("int() expects a string or integer, got " ^ getTypeName arg)
+  | "int", args ->
+      OBJ_ERROR
+        ("int() expects 1 argument, got " ^ string_of_int (List.length args))
+  (* type: returns type name of value *)
+  | "type", [ arg ] -> OBJ_STRING (getTypeName arg)
+  | "type", args ->
+      OBJ_ERROR
+        ("type() expects 1 argument, got " ^ string_of_int (List.length args))
+  | name, _ -> OBJ_ERROR ("Unknown builtin function: " ^ name)
 
 let empty_env = { store = StringMap.empty; outer = None }
 let newEnclosedEnv outer = { store = StringMap.empty; outer = Some outer }
@@ -85,6 +138,7 @@ and evalPrefixExpression op r =
 and evalInfixExpression left operator right =
   match (left, operator, right) with
   | OBJ_INT l, PLUS, OBJ_INT r -> OBJ_INT (l + r)
+  | OBJ_STRING l, PLUS, OBJ_STRING r -> OBJ_STRING (l ^ r)
   | OBJ_INT l, MINUS, OBJ_INT r -> OBJ_INT (l - r)
   | OBJ_INT l, ASTERISK, OBJ_INT r -> OBJ_INT (l * r)
   | OBJ_INT l, SLASH, OBJ_INT r ->
@@ -124,10 +178,13 @@ and evalExpression expr env =
   match expr with
   | IntLiteral i -> (OBJ_INT i, env)
   | BoolLiteral b -> (OBJ_BOOL b, env)
+  | StringLiteral s -> (OBJ_STRING s, env)
   | Ident name -> (
-      match getVar env name with
-      | Some value -> (value, env)
-      | None -> (OBJ_ERROR ("variable not defined: " ^ name), env))
+      if isBuiltin name then (OBJ_BUILTIN name, env)
+      else
+        match getVar env name with
+        | Some value -> (value, env)
+        | None -> (OBJ_ERROR ("variable not defined: " ^ name), env))
   | Prefix { operator; right } -> (
       let right_obj, env' = evalExpression right env in
       match right_obj with
@@ -158,6 +215,11 @@ and evalExpression expr env =
       let fn_obj, env' = evalExpression fn env in
       match fn_obj with
       | OBJ_ERROR _ -> (fn_obj, env')
+      | OBJ_BUILTIN name -> (
+          let arg_values, env'' = evalExpressions arguments env' in
+          match arg_values with
+          | [ (OBJ_ERROR _ as err) ] -> (err, env'')
+          | _ -> (callBuiltin name arg_values, env''))
       | OBJ_FUNCTION { parameters; body; env = fn_env } -> (
           let arg_values, env'' = evalExpressions arguments env' in
           match arg_values with
@@ -175,7 +237,7 @@ and evalExpression expr env =
                        arg_count
                        (String.concat ", " parameters)),
                   env'' )
-              else (* TODO:Evaluate Function Here <-*)
+              else
                 (* Create new environment with function's closure environment *)
                 let extended_env =
                   bindParameters fn_env parameters arg_values

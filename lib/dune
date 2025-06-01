@@ -1,6 +1,6 @@
 (library
  (name zin)
- (modules tokens lexer ast parser evaluator)
+ (modules tokens lexer ast parser evaluator run)
  (preprocess
   (pps ppx_deriving.show ppx_deriving.ord))
  (libraries base))

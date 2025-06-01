@@ -5,6 +5,7 @@ type identifier = string [@@deriving show]
 and expression =
   | IntLiteral of int
   | BoolLiteral of bool
+  | StringLiteral of string
   | Ident of identifier
   | Prefix of { operator : token; right : expression }
   | Infix of { left : expression; operator : token; right : expression }

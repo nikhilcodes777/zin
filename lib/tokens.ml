@@ -1,6 +1,7 @@
 type token =
   | IDENTIFIER of string
   | INT of int
+  | STRING of string
   | ASSIGN
   | PLUS
   | MINUS
@@ -46,6 +47,7 @@ let describeToken = function
   | EOF -> "End of File"
   | IDENTIFIER s -> "Identifier: " ^ s
   | INT n -> "Integer: " ^ string_of_int n
+  | STRING s -> "String: " ^ s
   | ASSIGN -> "Assign"
   | PLUS -> "Plus"
   | MINUS -> "Minus"
