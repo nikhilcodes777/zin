@@ -20,6 +20,8 @@
           ocamlPackages.findlib
           ocamlPackages.utop
           ocamlPackages.base
+          ocamlPackages.ppx_deriving
+          ocamlPackages.ppxlib
           ocamlPackages.ounit
           ocamlPackages.odoc
           ocamlformat

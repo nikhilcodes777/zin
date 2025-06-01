@@ -5,7 +5,7 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github nikhilcodes777/zin))
 
 (authors "Nikhil <nikhil7x7@gmail.com>")
 
@@ -13,6 +13,7 @@
 
 (license LICENSE)
 
+; Update it to Readme file and write a better readme
 (documentation https://url/to/documentation)
 
 (package

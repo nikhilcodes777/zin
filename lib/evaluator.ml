@@ -1,0 +1,240 @@
+open Ast
+open Tokens
+module StringMap = Map.Make (String)
+
+(* NOTE: Map gets value with log(n) we can improve it by using hashtbl*)
+type environment = {
+  store : eval_object StringMap.t;
+  outer : environment option;
+}
+
+and eval_object =
+  | OBJ_INT of int
+  | OBJ_BOOL of bool
+  | OBJ_NULL
+  | OBJ_ERROR of string
+  | OBJ_RETURN of eval_object
+  | OBJ_FUNCTION of {
+      parameters : identifier list;
+      body : block;
+      env : environment;
+    }
+
+let rec describeObject = function
+  | OBJ_INT i -> string_of_int i
+  | OBJ_BOOL b -> string_of_bool b
+  | OBJ_NULL -> "null"
+  | OBJ_RETURN r -> describeObject r
+  | OBJ_ERROR e -> "Error: " ^ e
+  | OBJ_FUNCTION { parameters; _ } ->
+      "fn(" ^ String.concat ", " parameters ^ ") { ... }"
+
+let getTypeName = function
+  | OBJ_INT _ -> "integer"
+  | OBJ_BOOL _ -> "boolean"
+  | OBJ_NULL -> "null"
+  | OBJ_ERROR _ -> "error"
+  | OBJ_RETURN _ -> "return value"
+  | OBJ_FUNCTION _ -> "function"
+
+let empty_env = { store = StringMap.empty; outer = None }
+let newEnclosedEnv outer = { store = StringMap.empty; outer = Some outer }
+
+let rec getVar env name =
+  try Some (StringMap.find name env.store)
+  with Not_found -> (
+    match env.outer with Some outer -> getVar outer name | None -> None)
+
+let setVar env name value =
+  { env with store = StringMap.add name value env.store }
+
+let bindParameters outer params args =
+  let enclosed_env = newEnclosedEnv outer in
+  try
+    let param_arg_pairs = List.combine params args in
+    List.fold_left
+      (fun env (param, arg) -> setVar env param arg)
+      enclosed_env param_arg_pairs
+  with Invalid_argument _ -> enclosed_env (* Lists have different lengths *)
+
+let rec eval node env =
+  match node with
+  | Program program -> evalStatements program env
+  | Expression expr -> evalExpression expr env
+  | Statement stmt -> evalStatement stmt env
+
+and isTruthy = function
+  | OBJ_BOOL true -> true
+  | OBJ_BOOL false -> false
+  | OBJ_NULL -> false
+  | _ -> true
+
+and evalPrefixExpression op r =
+  match (op, r) with
+  | BANG, r -> OBJ_BOOL (r |> isTruthy |> not)
+  | MINUS, OBJ_INT i -> OBJ_INT (-1 * i)
+  | MINUS, other ->
+      OBJ_ERROR
+        ("Cannot apply '-' to " ^ getTypeName other
+       ^ ". Expected an integer, got: " ^ describeObject other)
+  | _ ->
+      OBJ_ERROR
+        ("Unknown prefix operator '" ^ describeToken op ^ "' applied to "
+       ^ getTypeName r)
+
+and evalInfixExpression left operator right =
+  match (left, operator, right) with
+  | OBJ_INT l, PLUS, OBJ_INT r -> OBJ_INT (l + r)
+  | OBJ_INT l, MINUS, OBJ_INT r -> OBJ_INT (l - r)
+  | OBJ_INT l, ASTERISK, OBJ_INT r -> OBJ_INT (l * r)
+  | OBJ_INT l, SLASH, OBJ_INT r ->
+      if r = 0 then
+        OBJ_ERROR
+          ("Division by zero: cannot divide " ^ string_of_int l ^ " by 0")
+      else OBJ_INT (l / r)
+  | OBJ_INT l, LT, OBJ_INT r -> OBJ_BOOL (l < r)
+  | OBJ_INT l, GT, OBJ_INT r -> OBJ_BOOL (l > r)
+  | OBJ_INT l, LT_EQUAL, OBJ_INT r -> OBJ_BOOL (l <= r)
+  | OBJ_INT l, GT_EQUAL, OBJ_INT r -> OBJ_BOOL (l >= r)
+  | l, EQUAL, r -> OBJ_BOOL (l = r)
+  | l, NOT_EQUAL, r -> OBJ_BOOL (l <> r)
+  | ( left_val,
+      (PLUS | MINUS | ASTERISK | SLASH | LT | GT | LT_EQUAL | GT_EQUAL),
+      right_val ) ->
+      let op_name =
+        match operator with
+        | PLUS -> "addition (+)"
+        | MINUS -> "subtraction (-)"
+        | ASTERISK -> "multiplication (*)"
+        | SLASH -> "division (/)"
+        | LT -> "less than (<)"
+        | GT -> "greater than (>)"
+        | LT_EQUAL -> "less than or equal (<=)"
+        | GT_EQUAL -> "greater than or equal (>=)"
+        | _ -> "comparison"
+      in
+      OBJ_ERROR
+        (Printf.sprintf
+           "Type mismatch in %s: cannot operate on %s (%s) and %s (%s)" op_name
+           (getTypeName left_val) (describeObject left_val)
+           (getTypeName right_val) (describeObject right_val))
+  | _ -> OBJ_ERROR ("unknown operator: " ^ describeToken operator)
+
+and evalExpression expr env =
+  match expr with
+  | IntLiteral i -> (OBJ_INT i, env)
+  | BoolLiteral b -> (OBJ_BOOL b, env)
+  | Ident name -> (
+      match getVar env name with
+      | Some value -> (value, env)
+      | None -> (OBJ_ERROR ("variable not defined: " ^ name), env))
+  | Prefix { operator; right } -> (
+      let right_obj, env' = evalExpression right env in
+      match right_obj with
+      | OBJ_ERROR _ -> (right_obj, env')
+      | _ -> (evalPrefixExpression operator right_obj, env))
+  | Infix { left; operator; right } -> (
+      let left_obj, env' = evalExpression left env in
+      match left_obj with
+      | OBJ_ERROR _ -> (left_obj, env')
+      | _ -> (
+          let right_obj, env'' = evalExpression right env' in
+          match right_obj with
+          | OBJ_ERROR _ -> (right_obj, env'')
+          | _ -> (evalInfixExpression left_obj operator right_obj, env'')))
+  | IfExpression { condition; consequence; alternative } -> (
+      let condition_obj, env' = evalExpression condition env in
+      match condition_obj with
+      | OBJ_ERROR _ -> (condition_obj, env')
+      | _ -> (
+          if isTruthy condition_obj then evalStatements consequence env'
+          else
+            match alternative with
+            | Some alt -> evalStatements alt env'
+            | None -> (OBJ_NULL, env')))
+  | FnExpression { parameters; body } ->
+      (OBJ_FUNCTION { parameters; body; env }, env)
+  | CallExpression { fn; arguments } -> (
+      let fn_obj, env' = evalExpression fn env in
+      match fn_obj with
+      | OBJ_ERROR _ -> (fn_obj, env')
+      | OBJ_FUNCTION { parameters; body; env = fn_env } -> (
+          let arg_values, env'' = evalExpressions arguments env' in
+          match arg_values with
+          | [ (OBJ_ERROR _ as err) ] -> (err, env'')
+          | _ ->
+              let param_count = List.length parameters in
+              let arg_count = List.length arg_values in
+              if param_count <> arg_count then
+                ( OBJ_ERROR
+                    (Printf.sprintf
+                       "Function call error: expected %d argument%s, got %d. \
+                        Parameters: [%s]"
+                       param_count
+                       (if param_count = 1 then "" else "s")
+                       arg_count
+                       (String.concat ", " parameters)),
+                  env'' )
+              else (* TODO:Evaluate Function Here <-*)
+                (* Create new environment with function's closure environment *)
+                let extended_env =
+                  bindParameters fn_env parameters arg_values
+                in
+                (* For recursive calls: if calling a named function, bind it in execution environment *)
+                let self_referencing_env =
+                  match fn with
+                  | Ident func_name -> (
+                      (* Check if this function exists in the current environment (caller's env) *)
+                      match getVar env'' func_name with
+                      | Some func_obj when func_obj = fn_obj ->
+                          (* It's the same function, add self-reference *)
+                          setVar extended_env func_name fn_obj
+                      | _ -> extended_env)
+                  | _ -> extended_env
+                in
+                let result, _ = evalStatements body self_referencing_env in
+                (* Handle return values - unwrap OBJ_RETURN *)
+                let final_result =
+                  match result with OBJ_RETURN value -> value | other -> other
+                in
+                (final_result, env''))
+      | _ -> (OBJ_ERROR "not a function: cannot call non-function value", env))
+
+and evalExpressions exprs env =
+  let rec aux exprs env acc =
+    match exprs with
+    | [] -> (List.rev acc, env)
+    | expr :: rest -> (
+        let expr_val, env' = evalExpression expr env in
+        match expr_val with
+        | OBJ_ERROR _ -> ([ expr_val ], env')
+        | _ -> aux rest env' (expr_val :: acc))
+  in
+  aux exprs env []
+
+and evalStatement stmt env =
+  match stmt with
+  | ExpressionStatement expr -> evalExpression expr env
+  | BlockStatement block -> evalStatements block env
+  | ReturnStatement { value } -> (
+      let value_obj, env' = evalExpression value env in
+      match value_obj with
+      | OBJ_ERROR _ -> (value_obj, env')
+      | _ -> (OBJ_RETURN value_obj, env'))
+  | LetStatement { name; value } -> (
+      let value_obj, env' = evalExpression value env in
+      match value_obj with
+      | OBJ_ERROR _ -> (value_obj, env')
+      | _ ->
+          let env'' = setVar env' name value_obj in
+          (OBJ_NULL, env''))
+
+and evalStatements statements env =
+  let rec eval_stmts stmts env =
+    match stmts with
+    | [] -> (OBJ_NULL, env)
+    | stmt :: rest ->
+        let result, env' = evalStatement stmt env in
+        if rest = [] then (result, env') else eval_stmts rest env'
+  in
+  eval_stmts statements env
