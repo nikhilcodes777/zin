@@ -22,7 +22,7 @@
  (synopsis "A cool language")
  (description
   "A cool programming language made in coolest programming langauge")
- (depends ocaml dune cmdliner ppx_deriving ounit2 odoc)
+ (depends ocaml dune cmdliner ppx_deriving ounit2 base odoc)
  (tags
   ("add topics" "to describe" your project)))
 
