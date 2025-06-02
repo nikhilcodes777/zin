@@ -8,12 +8,15 @@ authors: ["Nikhil <nikhil7x7@gmail.com>"]
 license: "LICENSE"
 tags: ["add topics" "to describe" "your" "project"]
 homepage: "https://github.com/nikhilcodes777/zin"
-doc: "https://url/to/documentation"
+doc: "https://github.com/nikhilcodes777/zin"
 bug-reports: "https://github.com/nikhilcodes777/zin/issues"
 depends: [
-  "dune" {>= "3.18"}
   "ocaml"
-  "odoc" {with-doc}
+  "dune" {>= "3.18"}
+  "cmdliner"
+  "ppx_deriving"
+  "ounit2"
+  "odoc"
 ]
 build: [
   ["dune" "subst"] {dev}
