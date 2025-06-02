@@ -49,8 +49,8 @@ let getTypeName = function
 
 let isBuiltin name =
   match name with
-  | "len" | "print" | "println" | "str" | "int" | "type" | "head" | "tail"
-  | "last" ->
+  | "len" | "print" | "println" | "readln" | "str" | "int" | "type" | "head"
+  | "tail" | "last" ->
       true
   | _ -> false
 
@@ -77,6 +77,12 @@ let callBuiltin name args =
   | "println", args ->
       OBJ_ERROR
         ("println() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "readln", [] -> (
+      try OBJ_STRING (read_line ()) with End_of_file -> OBJ_NULL)
+  | "readln", args ->
+      OBJ_ERROR
+        ("read_line() expects 0 arguments, got "
+        ^ string_of_int (List.length args))
   | "str", [ arg ] -> OBJ_STRING (describeObject arg)
   | "str", args ->
       OBJ_ERROR

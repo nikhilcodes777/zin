@@ -50,6 +50,6 @@ let run_program input =
   let parser = newParser tokens in
   match parseProgram parser with
   | Ok program ->
-      let result, _ = eval (Program program) empty_env in
-      Printf.printf "%s" (describeObject result)
+      let _, _ = eval (Program program) empty_env in
+      ()
   | Error err -> Printf.printf "\nParse failed: %s\n" (show_parse_error err)
