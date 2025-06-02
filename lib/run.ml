@@ -27,15 +27,23 @@ let rec replLoop () =
   | line ->
       (let program = line |> lex |> newParser |> parseProgram in
        match program with
-       | Ok program ->
-           let result, env' = eval (Program program) !global_env in
-           global_env := env';
-           Printf.printf "%s\n" (describeObject result)
+       | Ok program -> (
+           let result, new_env =
+             Evaluator.eval (Ast.Program program) !global_env
+           in
+           match result with
+           | Evaluator.OBJ_ERROR _ ->
+               Printf.printf "%s\n" (Evaluator.describeObject result);
+               ()
+           | _ ->
+               global_env := new_env;
+               Printf.printf "%s\n" (Evaluator.describeObject result))
        | Error e -> Printf.printf "%s\n" (show_parse_error e));
       replLoop ()
 
 let repl () =
   print_endline "Welcome to the Zin REPL!";
+  print_endline "Press ctrl-c or ctrl-d to exit";
   replLoop ()
 
 let read_file file_name : string =

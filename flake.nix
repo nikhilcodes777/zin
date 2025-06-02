@@ -23,6 +23,7 @@
           ocamlPackages.ppx_deriving
           ocamlPackages.ppxlib
           ocamlPackages.ounit
+          ocamlPackages.cmdliner
           ocamlPackages.odoc
           ocamlformat
           ocamlPackages.ocaml-lsp

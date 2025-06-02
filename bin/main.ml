@@ -1,3 +1,3 @@
-open Zin.Run
+open Zin.Cli
 
-let () = repl ()
+let () = main ()
