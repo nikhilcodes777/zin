@@ -25,7 +25,7 @@ jobs:
             ocaml_version: '5.3.0'
           - os: windows-latest
             platform_name: windows
-            asset_ext: zip
+            asset_ext: exe
             pack_cmd: zip -r # zip needs -r for directories, and output name first
             ocaml_version: '5.3.0'
       fail-fast: false # Allows other platforms to build even if one fails
@@ -94,14 +94,6 @@ jobs:
           cp ./\_build/default/bin/main.exe ./zin-release/zin
         shell: bash
 
-      - name: Prepare Release Directory (Windows) 📁
-        if: runner.os == 'Windows'
-        run: |
-          mkdir zin-release
-          # On Windows, the executable might be .exe
-          Copy-Item -Path .\_build\default\bin\main.exe -Destination .\zin-release\zin.exe
-        shell: pwsh
-
       - name: Create Release Archive (Linux/macOS) 🎁
         if: runner.os != 'Windows'
         run: |
@@ -110,20 +102,13 @@ jobs:
           ${{ matrix.pack_cmd }} "${ASSET_NAME}" zin-release/
         shell: bash
 
-      - name: Create Release Archive (Windows) 🎁
+      - name: Prepare Release Asset (Windows) 📁
         if: runner.os == 'Windows'
         run: |
-          # PowerShell syntax for local variable assignment
+          # Create asset name and copy the exe directly as the release asset
           $ASSET_NAME = "zin-${{ env.VERSION }}-${{ matrix.platform_name }}-${{ env.ARCH }}.${{ matrix.asset_ext }}"
-          
-          # Write the variable to GITHUB_ENV in PowerShell
           "ASSET_NAME=$ASSET_NAME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          
-          # Execute the zip command
-          # Note: 'zip' command on Windows might require a full path or ensuring it's in PATH
-          # If 'zip' isn't found, you might need to install a tool like 7-Zip and use its executable.
-          ${{ matrix.pack_cmd }} "$ASSET_NAME" zin-release/
-          
+          Copy-Item -Path .\_build\default\bin\main.exe -Destination ".\$ASSET_NAME"
         shell: pwsh
 
       - name: Upload Release Asset to GitHub 🚀
