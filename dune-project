@@ -14,12 +14,14 @@
 (license LICENSE)
 
 ; Update it to Readme file and write a better readme
-(documentation https://url/to/documentation)
+
+(documentation https://github.com/nikhilcodes777/zin)
 
 (package
  (name zin)
  (synopsis "A cool language")
- (description "A cool programming language made in coolest programming langauge")
+ (description
+  "A cool programming language made in coolest programming langauge")
  (depends ocaml)
  (tags
   ("add topics" "to describe" your project)))
