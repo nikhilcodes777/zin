@@ -113,10 +113,17 @@ jobs:
       - name: Create Release Archive (Windows) 🎁
         if: runner.os == 'Windows'
         run: |
-          ASSET_NAME="zin-${{ env.VERSION }}-${{ matrix.platform_name }}-${{ env.ARCH }}.${{ matrix.asset_ext }}"
-          echo "ASSET_NAME=${ASSET_NAME}" >> $GITHUB_ENV
-          # zip command syntax: zip -r <output_archive_name> <directory_to_zip>
-          ${{ matrix.pack_cmd }} "${ASSET_NAME}" zin-release/
+          # PowerShell syntax for local variable assignment
+          $ASSET_NAME = "zin-${{ env.VERSION }}-${{ matrix.platform_name }}-${{ env.ARCH }}.${{ matrix.asset_ext }}"
+          
+          # Write the variable to GITHUB_ENV in PowerShell
+          "ASSET_NAME=$ASSET_NAME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          
+          # Execute the zip command
+          # Note: 'zip' command on Windows might require a full path or ensuring it's in PATH
+          # If 'zip' isn't found, you might need to install a tool like 7-Zip and use its executable.
+          ${{ matrix.pack_cmd }} "$ASSET_NAME" zin-release/
+          
         shell: pwsh
 
       - name: Upload Release Asset to GitHub 🚀
