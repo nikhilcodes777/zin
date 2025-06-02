@@ -6,6 +6,8 @@ type token =
   | PLUS
   | MINUS
   | COMMA
+  | DOT
+  | RANGE
   | ASTERISK
   | BANG
   | SLASH
@@ -18,6 +20,8 @@ type token =
   | SEMICOLON
   | LPAREN
   | RPAREN
+  | LBRACKET
+  | RBRACKET
   | LBRACE
   | RBRACE
   | LET
@@ -61,9 +65,13 @@ let describeToken = function
   | SLASH -> "/"
   | BANG -> "!"
   | COMMA -> ","
+  | DOT -> "."
+  | RANGE -> ".."
   | SEMICOLON -> ";"
   | LPAREN -> "("
   | RPAREN -> ")"
+  | LBRACKET -> "["
+  | RBRACKET -> "]"
   | LBRACE -> "{"
   | RBRACE -> "}"
   | LET -> "let"

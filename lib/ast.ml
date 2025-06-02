@@ -4,11 +4,14 @@ type identifier = string [@@deriving show]
 
 and expression =
   | IntLiteral of int
+  | ListLiteral of expression list
   | BoolLiteral of bool
   | StringLiteral of string
   | Ident of identifier
   | Prefix of { operator : token; right : expression }
   | Infix of { left : expression; operator : token; right : expression }
+  | RangeExpression of { starting : expression; ending : expression }
+  | IndexExpression of { left : expression; index : expression }
   | IfExpression of {
       condition : expression;
       consequence : block;

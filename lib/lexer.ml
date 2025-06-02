@@ -98,12 +98,26 @@ let rec nextToken (l : lexer) : Tokens.token =
   | ',' ->
       readChar l;
       Tokens.COMMA
+  | '.' ->
+      if Base.Char.equal (peekLexer l) '.' then (
+        readChar l;
+        readChar l;
+        Tokens.RANGE)
+      else (
+        readChar l;
+        Tokens.DOT)
   | '(' ->
       readChar l;
       Tokens.LPAREN
   | ')' ->
       readChar l;
       Tokens.RPAREN
+  | '[' ->
+      readChar l;
+      Tokens.LBRACKET
+  | ']' ->
+      readChar l;
+      Tokens.RBRACKET
   | '{' ->
       readChar l;
       Tokens.LBRACE

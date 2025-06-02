@@ -10,6 +10,7 @@ type precedence =
   | PRODUCT (* * / *)
   | PREFIX (* -X !X *)
   | CALL (* foo(x,y) *)
+  | INDEX (* mylist[index] *)
 [@@deriving show]
 
 type parser = { tokens : token list; current : token; peek : token }
@@ -29,6 +30,7 @@ let tokenPrecedence = function
   | ASTERISK | SLASH -> PRODUCT
   | EQUAL | GT | GT_EQUAL | LT | LT_EQUAL | NOT_EQUAL -> EQUALITY
   | LPAREN -> CALL
+  | LBRACKET -> INDEX
   | _ -> LOWEST
 
 let peekPrecedence p = tokenPrecedence p.peek
@@ -88,6 +90,7 @@ let rec parseExpression p precedence =
     | TRUE | FALSE -> parseBooleanLiteral p
     | BANG | MINUS -> parsePrefixExpression p
     | LPAREN -> parseGroupedExpression p
+    | LBRACKET -> parseListOrRangeLiteral p
     | IF -> parseIfExpression p
     | FUNCTION -> parseFnExpression p
     | _ -> Error (NoPrefixFunction p.current)
@@ -95,6 +98,7 @@ let rec parseExpression p precedence =
   let rec parseInfixLoop left p =
     if
       p.current = SEMICOLON || p.current = EOF || p.current = COMMA
+      || p.current = RBRACKET
       || tokenPrecedence p.current <= precedence
     then Ok (left, p)
     else
@@ -105,6 +109,9 @@ let rec parseExpression p precedence =
           parseInfixLoop left' p
       | LPAREN ->
           let* left', p = parseCallExpression left p in
+          parseInfixLoop left' p
+      | LBRACKET ->
+          let* left', p = parseIndexExpression left p in
           parseInfixLoop left' p
       | _ -> Ok (left, p)
   in
@@ -179,6 +186,76 @@ and parseCallExpression fn p =
   let* arguments, p = parseCallArgs p [] in
   let* p = expectCurrent p RPAREN in
   Ok (CallExpression { fn; arguments }, p)
+
+and parseListElements p =
+  let rec loop p_loop elements =
+    let* elem, p = parseExpression p_loop LOWEST in
+    let elems = elem :: elements in
+    match p.current with
+    | COMMA ->
+        let p = advance p in
+        if p.current = RBRACKET then Ok (List.rev elems, advance p)
+        else if p.current = EOF || p.current = RBRACKET || p.current = RPAREN
+        then
+          Error
+            (UnexpectedToken
+               { expected = "expression after comma"; got = p.current })
+        else loop p elems
+    | tok when tok = RBRACKET -> Ok (List.rev elems, advance p)
+    | _ ->
+        Error
+          (UnexpectedToken
+             {
+               expected =
+                 Printf.sprintf "%s or %s" (describeToken COMMA)
+                   (describeToken RBRACKET);
+               got = p.current;
+             })
+  in
+  if p.current = RBRACKET then Ok ([], advance p) else loop p []
+
+and parseListOrRangeLiteral p =
+  let p = advance p in
+  if p.current = RBRACKET then Ok (ListLiteral [], advance p)
+  else
+    let* first_expr, p = parseExpression p LOWEST in
+    match p.current with
+    | RANGE ->
+        let p = advance p in
+        let* end_expr, p = parseExpression p LOWEST in
+        let* p = expectCurrent p RBRACKET in
+        Ok (RangeExpression { starting = first_expr; ending = end_expr }, p)
+    | COMMA ->
+        let p = advance p in
+        if p.current = RBRACKET then Ok (ListLiteral [ first_expr ], advance p)
+        else if p.current = EOF then
+          Error
+            (UnexpectedToken
+               {
+                 expected =
+                   Printf.sprintf "expression or %s after comma"
+                     (describeToken RBRACKET);
+                 got = EOF;
+               })
+        else
+          let* remaining_elements, p = parseListElements p in
+          Ok (ListLiteral (first_expr :: remaining_elements), p)
+    | RBRACKET -> Ok (ListLiteral [ first_expr ], advance p)
+    | _ ->
+        Error
+          (UnexpectedToken
+             {
+               expected =
+                 Printf.sprintf "%s, %s or %s" (describeToken COMMA)
+                   (describeToken RANGE) (describeToken RBRACKET);
+               got = p.current;
+             })
+
+and parseIndexExpression left p =
+  let p = advance p in
+  let* index, p = parseExpression p LOWEST in
+  let* p = expectCurrent p RBRACKET in
+  Ok (IndexExpression { left; index }, p)
 
 and parseBlockStatement p =
   let* p = expectCurrent p LBRACE in

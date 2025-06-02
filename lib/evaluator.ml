@@ -21,6 +21,7 @@ and eval_object =
       body : block;
       env : environment;
     }
+  | OBJ_LIST of eval_object list
 
 let rec describeObject = function
   | OBJ_INT i -> string_of_int i
@@ -32,6 +33,8 @@ let rec describeObject = function
   | OBJ_ERROR e -> "Error: " ^ e
   | OBJ_FUNCTION { parameters; _ } ->
       "fn(" ^ String.concat ", " parameters ^ ") { ... }"
+  | OBJ_LIST elems ->
+      "[" ^ (List.map describeObject elems |> String.concat ", ") ^ "]"
 
 let getTypeName = function
   | OBJ_INT _ -> "integer"
@@ -42,17 +45,21 @@ let getTypeName = function
   | OBJ_ERROR _ -> "error"
   | OBJ_RETURN _ -> "return value"
   | OBJ_FUNCTION _ -> "function"
+  | OBJ_LIST _ -> "list"
 
 let isBuiltin name =
   match name with
-  | "len" | "print" | "println" | "str" | "int" | "type" -> true
+  | "len" | "print" | "println" | "str" | "int" | "type" | "head" | "tail"
+  | "last" ->
+      true
   | _ -> false
 
 let callBuiltin name args =
   match (name, args) with
   | "len", [ OBJ_STRING s ] -> OBJ_INT (String.length s)
+  | "len", [ OBJ_LIST l ] -> OBJ_INT (List.length l)
   | "len", [ arg ] ->
-      OBJ_ERROR ("len() expects a string, got " ^ getTypeName arg)
+      OBJ_ERROR ("len() expects a string or a list, got " ^ getTypeName arg)
   | "len", args ->
       OBJ_ERROR
         ("len() expects 1 argument, got " ^ string_of_int (List.length args))
@@ -88,6 +95,27 @@ let callBuiltin name args =
   | "type", args ->
       OBJ_ERROR
         ("type() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "head", [ OBJ_LIST [] ] -> OBJ_NULL
+  | "head", [ OBJ_LIST (h :: _) ] -> h
+  | "head", [ arg ] ->
+      OBJ_ERROR ("first() expects a list, got " ^ getTypeName arg)
+  | "head", args ->
+      OBJ_ERROR
+        ("first() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "last", [ OBJ_LIST [] ] -> OBJ_NULL
+  | "last", [ OBJ_LIST l ] -> OBJ_LIST [ List.hd (List.rev l) ]
+  | "last", [ arg ] ->
+      OBJ_ERROR ("last() expects a list, got " ^ getTypeName arg)
+  | "last", args ->
+      OBJ_ERROR
+        ("last() expects 1 argument, got " ^ string_of_int (List.length args))
+  | "tail", [ OBJ_LIST [] ] -> OBJ_NULL
+  | "tail", [ OBJ_LIST (_ :: t) ] -> OBJ_LIST t
+  | "tail", [ arg ] ->
+      OBJ_ERROR ("rest() expects a list, got " ^ getTypeName arg)
+  | "tail", args ->
+      OBJ_ERROR
+        ("rest() expects 1 argument, got " ^ string_of_int (List.length args))
   | name, _ -> OBJ_ERROR ("Unknown builtin function: " ^ name)
 
 let empty_env = { store = StringMap.empty; outer = None }
@@ -139,6 +167,9 @@ and evalInfixExpression left operator right =
   match (left, operator, right) with
   | OBJ_INT l, PLUS, OBJ_INT r -> OBJ_INT (l + r)
   | OBJ_STRING l, PLUS, OBJ_STRING r -> OBJ_STRING (l ^ r)
+  | OBJ_LIST l, PLUS, OBJ_LIST r -> OBJ_LIST (l @ r)
+  | element, PLUS, OBJ_LIST l -> OBJ_LIST (element :: l)
+  | OBJ_LIST l, PLUS, element -> OBJ_LIST (l @ [ element ])
   | OBJ_INT l, MINUS, OBJ_INT r -> OBJ_INT (l - r)
   | OBJ_INT l, ASTERISK, OBJ_INT r -> OBJ_INT (l * r)
   | OBJ_INT l, SLASH, OBJ_INT r ->
@@ -199,6 +230,68 @@ and evalExpression expr env =
           match right_obj with
           | OBJ_ERROR _ -> (right_obj, env'')
           | _ -> (evalInfixExpression left_obj operator right_obj, env'')))
+  | RangeExpression { starting; ending } -> (
+      let start_obj, env' = evalExpression starting env in
+      match start_obj with
+      | OBJ_INT start_val -> (
+          let end_obj, env'' = evalExpression ending env' in
+          match end_obj with
+          | OBJ_INT end_val ->
+              if start_val <= end_val then
+                let rec generate_range current_val acc =
+                  if current_val > end_val then List.rev acc
+                  else
+                    generate_range (current_val + 1) (OBJ_INT current_val :: acc)
+                in
+                (OBJ_LIST (generate_range start_val []), env'')
+              else
+                ( OBJ_ERROR
+                    "Range error: starting value must be less than or equal to \
+                     ending value",
+                  env'' )
+          | _ ->
+              ( OBJ_ERROR
+                  ("Range error: ending value must be an integer, got "
+                 ^ getTypeName end_obj),
+                env' ))
+      | _ ->
+          ( OBJ_ERROR
+              ("Range error: starting value must be an integer, got "
+             ^ getTypeName start_obj),
+            env' ))
+  | IndexExpression { left; index } -> (
+      let left_obj, env' = evalExpression left env in
+      match left_obj with
+      | OBJ_ERROR _ -> (left_obj, env')
+      | OBJ_LIST elems -> (
+          let index_obj, env'' = evalExpression index env' in
+          match index_obj with
+          | OBJ_INT i ->
+              if i >= 0 && i < List.length elems then (List.nth elems i, env'')
+              else
+                ( OBJ_ERROR
+                    (Printf.sprintf
+                       "Index out of bounds: index %d for list of length %d" i
+                       (List.length elems)),
+                  env'' )
+          | _ ->
+              ( OBJ_ERROR
+                  ("Index error: index must be an integer, got "
+                 ^ getTypeName index_obj),
+                env'' ))
+      | _ ->
+          ( OBJ_ERROR ("Index error: cannot index type " ^ getTypeName left_obj),
+            env' ))
+  | ListLiteral elems ->
+      let evaluated_elems, env' = evalExpressions elems env in
+      if
+        List.exists
+          (function OBJ_ERROR _ -> true | _ -> false)
+          evaluated_elems
+      then
+        ( List.find (function OBJ_ERROR _ -> true | _ -> false) evaluated_elems,
+          env' )
+      else (OBJ_LIST evaluated_elems, env')
   | IfExpression { condition; consequence; alternative } -> (
       let condition_obj, env' = evalExpression condition env in
       match condition_obj with
